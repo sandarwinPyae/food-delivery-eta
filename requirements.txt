@@ -7,3 +7,6 @@ scikit-learn
 plotly
 geopy
 gdown
+xgboost
+lightgbm
+catboost
