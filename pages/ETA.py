@@ -2,10 +2,12 @@ import streamlit as st
 import pandas as pd
 import joblib
 import os
+import gdown
+
 from utils.helper import calculate_distance, prepare_features
 
 # -----------------------------
-# Page Config (Top)
+# Page Config
 # -----------------------------
 st.set_page_config(
     page_title="ETA Predictor",
@@ -13,21 +15,33 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("🍕 ETA Predictor")
-st.caption("Fast & simple food delivery time estimation")
+# -----------------------------
+# Simple Header
+# -----------------------------
+st.markdown("<h2 style='text-align:center;'>🍕 ETA Predictor</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:gray;'>Delivery time estimation</p>", unsafe_allow_html=True)
+st.write("")
 
 # -----------------------------
-# Load Model
+# Load Model (same as yours)
 # -----------------------------
-model_path = 'model/multi_spectral_stack_model.pkl'
-features_path = 'model/features.pkl'
+file_id = "1mHXp-yZx-970tf7CsVyTI_c9SJ34Tbym"
+model_path = "model/multi_spectral_stack_model.pkl"
+features_path = "model/features.pkl"
 
 @st.cache_resource
 def load_assets():
+    os.makedirs("model", exist_ok=True)
+
+    if not os.path.exists(model_path):
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, model_path, quiet=True)
+
     if os.path.exists(model_path) and os.path.exists(features_path):
         model = joblib.load(model_path)
         features = joblib.load(features_path)
         return model, features
+
     return None, None
 
 model, feature_list = load_assets()
@@ -37,9 +51,11 @@ if model is None:
     st.stop()
 
 # -----------------------------
-# Minimal Input Section
+# Minimal Form Card
 # -----------------------------
 with st.form("eta_form"):
+
+    st.subheader("Basic Info")
 
     col1, col2 = st.columns(2)
 
@@ -47,31 +63,31 @@ with st.form("eta_form"):
         age = st.number_input("Age", 18, 60, 30)
         rating = st.slider("Rating", 1.0, 5.0, 4.5, 0.1)
         traffic = st.selectbox("Traffic", ["Low", "Medium", "High", "Jam"])
-        weather = st.selectbox("Weather", ["Sunny", "Stormy", "Sandstorms", "Cloudy", "Fog", "Windy"])
 
     with col2:
-        vehicle = st.selectbox("Vehicle Condition", [0, 1, 2])
-        deliveries = st.selectbox("Multiple Deliveries", [0, 1, 2, 3])
-        festival = st.toggle("Festival")
-        city = st.selectbox("City", ["Urban", "Semi-Urban", "Metropolitian"])
+        weather = st.selectbox("Weather", ["Sunny", "Stormy", "Sandstorms", "Cloudy", "Fog", "Windy"])
+        vehicle = st.selectbox("Vehicle", [0, 1, 2])
+        deliveries = st.selectbox("Deliveries", [0, 1, 2, 3])
 
-    st.divider()
+    st.write("")
+    festival = st.checkbox("Festival")
+    city = st.selectbox("City", ["Urban", "Semi-Urban", "Metropolitian"])
 
+    st.write("")
     st.subheader("Location")
-    c1, c2 = st.columns(2)
-    with c1:
-        res_lat = st.number_input("Restaurant Lat", value=12.976, format="%.6f")
-        res_lon = st.number_input("Restaurant Lon", value=80.2219, format="%.6f")
-    with c2:
-        del_lat = st.number_input("Delivery Lat", value=13.006, format="%.6f")
-        del_lon = st.number_input("Delivery Lon", value=80.2519, format="%.6f")
+
+    res_lat = st.number_input("Restaurant Latitude", value=12.976, format="%.6f")
+    res_lon = st.number_input("Restaurant Longitude", value=80.2219, format="%.6f")
+    del_lat = st.number_input("Delivery Latitude", value=13.006, format="%.6f")
+    del_lon = st.number_input("Delivery Longitude", value=80.2519, format="%.6f")
 
     order_time = st.time_input("Order Time")
 
-    submit = st.form_submit_button("Predict ETA", use_container_width=True)
+    st.write("")
+    submit = st.form_submit_button("Predict", use_container_width=True)
 
 # -----------------------------
-# Prediction Logic
+# Prediction
 # -----------------------------
 if submit:
 
@@ -93,10 +109,8 @@ if submit:
 
     df = pd.DataFrame([data])
 
-    # Distance
     df['distance_km'] = calculate_distance(res_lat, res_lon, del_lat, del_lon)
 
-    # Mapping
     traffic_map = {'Low': 0, 'Medium': 1, 'High': 2, 'Jam': 3}
     weather_map = {'Sunny': 0, 'Stormy': 1, 'Sandstorms': 2, 'Cloudy': 3, 'Fog': 4, 'Windy': 5}
     city_map = {'Urban': 0, 'Semi-Urban': 1, 'Metropolitian': 2}
@@ -113,9 +127,7 @@ if submit:
 
     prediction = model.predict(df_final)
 
-    # -----------------------------
-    # Clean Result Display
-    # -----------------------------
-    st.divider()
-    st.metric("Estimated Delivery Time", f"{prediction[0]:.2f} min")
+    # Minimal Result Display
+    st.write("")
+    st.success(f"Estimated Time: {prediction[0]:.1f} minutes")
     st.caption(f"Distance: {df['distance_km'].values[0]:.2f} km")
