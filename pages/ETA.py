@@ -12,221 +12,170 @@ from utils.helper import calculate_distance
 st.set_page_config(page_title="Precise ETA", page_icon="📍", layout="wide")
 
 # --------------------------------------------------
-# MINIMALIST UI DESIGN
+# FIXED DIMENSION UI DESIGN (CSS)
 # --------------------------------------------------
 st.markdown("""
 <style>
-.stApp {
-    background-color: #F4F6F9;
-}
+    .stApp { background-color: #F8F9FB; }
 
-.block-container {
-    padding-top: 2rem;
-}
+    /* Container Box များ အမြင့်တူစေရန် */
+    div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
+        background: white;
+        padding: 25px;
+        border-radius: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        border: 1px solid #EDF0F5;
+        min-height: 550px; /* အမြင့်ကို အနည်းငယ် ပိုတိုးထားပါတယ် */
+    }
 
-h1 {
-    font-weight: 700;
-    letter-spacing: -1px;
-}
-
-.section-card {
-    background: white;
-    padding: 22px;
-    border-radius: 18px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.05);
-    margin-bottom: 20px;
-}
-
-.stButton > button {
-    background-color: black;
-    color: white;
-    border-radius: 12px;
-    height: 48px;
-    font-weight: 600;
-    border: none;
-    transition: 0.3s ease;
-}
-
-.stButton > button:hover {
-    background-color: #333333;
-}
+    /* Button Style */
+    .stButton > button {
+        width: 100%;
+        border-radius: 12px;
+        height: 52px;
+        background-color: #000000;
+        color: white;
+        font-weight: 600;
+        border: none;
+        transition: 0.3s ease;
+    }
+    .stButton > button:hover { background-color: #333; }
 </style>
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------
-# GOOGLE DRIVE MODEL IDS
+# LOAD ASSETS
 # --------------------------------------------------
 MODEL_CONFIG = {
     "Random Forest": "15GVW6CWnYxUJOS07cTcj8mX7tW2Cm2dp",
     "LightGBM": "1YYhkY9IjmaClSHDREgxRUg7_Ib6bFUlr",
     "Multi-Stacking": "1VsZuT8OPc4NAtUcBTQCDUecq2UTn632Z"
 }
-# https://drive.google.com/file/d/15GVW6CWnYxUJOS07cTcj8mX7tW2Cm2dp/view?usp=drive_link
 FEATURES_FILE_ID = "1HWECz5MaglgZ7bzyMmmfodz8utgKzb8u"
 
-# --------------------------------------------------
-# SAFE GOOGLE DRIVE DOWNLOAD
-# --------------------------------------------------
-def download_from_drive(file_id, output_path):
-    url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    gdown.download(url, output_path, quiet=False)
 
-# --------------------------------------------------
-# LOAD MODELS
-# --------------------------------------------------
 @st.cache_resource
-def load_models():
+def load_assets():
     os.makedirs("model", exist_ok=True)
     models = {}
-
     for name, file_id in MODEL_CONFIG.items():
-        filename = name.lower().replace(" ", "_") + ".pkl"
-        path = os.path.join("model", filename)
-
+        path = os.path.join("model", f"{name.lower().replace(' ', '_')}.pkl")
         if not os.path.exists(path):
-            download_from_drive(file_id, path)
-
+            gdown.download(id=file_id, output=path, quiet=True)
         try:
-            model_obj = joblib.load(path)
+            obj = joblib.load(path)
+            if isinstance(obj, list): obj = obj[0]
+            if isinstance(obj, dict):
+                for k in ["model", "best_estimator_", "regressor"]:
+                    if k in obj: obj = obj[k]; break
+            if hasattr(obj, "predict"): models[name] = obj
+        except:
+            pass
 
-            # If accidentally downloaded HTML
-            if isinstance(model_obj, str):
-                st.error(f"{name} downloaded incorrectly (HTML file).")
-                continue
-
-            # If list
-            if isinstance(model_obj, list) and len(model_obj) > 0:
-                model_obj = model_obj[0]
-
-            # If dict
-            if isinstance(model_obj, dict):
-                for key in ["model", "estimator", "best_estimator_", "classifier", "regressor"]:
-                    if key in model_obj:
-                        model_obj = model_obj[key]
-                        break
-
-            if hasattr(model_obj, "predict"):
-                models[name] = model_obj
-            else:
-                st.warning(f"{name} loaded but has no predict() method.")
-
-        except Exception as e:
-            st.error(f"Error loading {name}: {e}")
-
-    # Load feature list
-    features_path = os.path.join("model", "features.pkl")
-
-    if not os.path.exists(features_path):
-        download_from_drive(FEATURES_FILE_ID, features_path)
-
-    try:
-        feature_list = joblib.load(features_path)
-    except Exception as e:
-        st.error(f"Failed to load features.pkl: {e}")
-        feature_list = []
-
-    if not models:
-        st.error("❌ No valid models loaded. Check Google Drive files.")
-        st.stop()
-
-    return models, feature_list
+    f_path = "model/features.pkl"
+    if not os.path.exists(f_path): gdown.download(id=FEATURES_FILE_ID, output=f_path, quiet=True)
+    return models, joblib.load(f_path)
 
 
-models, feature_list = load_models()
+models, feature_list = load_assets()
 
 # --------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------
 with st.sidebar:
-    st.markdown("### ⚙️ Model Configuration")
-    selected_model_name = st.selectbox(
-        "Select Model",
-        list(models.keys())
-    )
-
-# --------------------------------------------------
-# HEADER
-# --------------------------------------------------
-st.markdown("<h1 style='margin-bottom:0;'>Precise ETA</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:gray; margin-top:0;'>Real-time delivery prediction powered by Machine Learning</p>", unsafe_allow_html=True)
-
-# --------------------------------------------------
-# INPUT SECTION
-# --------------------------------------------------
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.markdown("### 📍 Location Details")
-
-    res_lat = st.number_input("Restaurant Latitude", value=12.976, format="%.4f")
-    res_lon = st.number_input("Restaurant Longitude", value=80.2219, format="%.4f")
-    del_lat = st.number_input("Delivery Latitude", value=13.006, format="%.4f")
-    del_lon = st.number_input("Delivery Longitude", value=80.2519, format="%.4f")
-
-    traffic = st.selectbox("Traffic Density", ["Low", "Medium", "High", "Jam"])
-    weather = st.selectbox("Weather Condition", ["Sunny", "Stormy", "Sandstorms", "Cloudy", "Fog", "Windy"])
-    city = st.selectbox("City Type", ["Urban", "Semi-Urban", "Metropolitian"])
-
-with col2:
-    st.markdown("### 🛵 Courier Details")
-
-    age = st.number_input("Delivery Person Age", 18, 60, 25)
-    rating = st.slider("Delivery Rating", 1.0, 5.0, 4.8)
-    vehicle = st.selectbox("Vehicle Condition", [0, 1, 2])
-
-    st.markdown("### ⏰ Order Time")
-
-    time_col1, time_col2 = st.columns(2)
-
-    with time_col1:
-        order_hour = st.selectbox(
-            "Hour",
-            list(range(0, 24)),
-            index=datetime.now().hour
-        )
-
-    with time_col2:
-        order_minute = st.selectbox(
-            "Minute",
-            list(range(0, 60, 5)),
-            index=datetime.now().minute // 5
-        )
-
-    festival = st.toggle("Festival Mode")
-
-# --------------------------------------------------
-# PREDICTION
-# --------------------------------------------------
-if st.button("Generate Prediction"):
-
-    data = {
-        "Delivery_person_Age": age,
-        "Delivery_person_Ratings": rating,
-        "Restaurant_latitude": res_lat,
-        "Restaurant_longitude": res_lon,
-        "Delivery_location_latitude": del_lat,
-        "Delivery_location_longitude": del_lon,
-        "Vehicle_condition": vehicle,
-        "multiple_deliveries": 1,
-        "Order_Hour": order_hour,
-        "Road_traffic_density": traffic,
-        "Weatherconditions": weather,
-        "Festival": "Yes" if festival else "No",
-        "City": city
-    }
-
-    df = pd.DataFrame([data])
-    df["distance_km"] = calculate_distance(res_lat, res_lon, del_lat, del_lon)
-
-    df_ohe = pd.get_dummies(df)
-    df_final = df_ohe.reindex(columns=feature_list, fill_value=0)
-
-    model = models[selected_model_name]
-    prediction = model.predict(df_final)[0]
-
+    st.header("⚙️ Settings")
+    selected_model_name = st.selectbox("Prediction Model", options=list(models.keys()))
     st.divider()
-    c1, c2, c3 = st.columns(3)
 
-    c1.metric("Expected Arrival", f"{int(prediction)} min")
-    c2.metric("Travel Distance", f"{df['distance_km'].values[0]:.2f} km")
-    c3.metric("Active Model", selected_model_name)
+# --------------------------------------------------
+# MAIN UI
+# --------------------------------------------------
+st.title("Precise ETA.")
+st.markdown("<p style='color:#86868B; margin-top:-15px;'>Smart logistics, powered by neural intelligence.</p>",
+            unsafe_allow_html=True)
+
+col_left, col_right = st.columns([1, 1], gap="medium")
+
+with col_left:
+    with st.container():
+        st.subheader("📍 Journey & Order")
+        c1, c2 = st.columns(2)
+        with c1:
+            res_lat = st.number_input("Restaurant Lat", value=12.976, format="%.4f")
+            res_lon = st.number_input("Restaurant Lon", value=80.2219, format="%.4f")
+        with c2:
+            del_lat = st.number_input("Delivery Lat", value=13.006, format="%.4f")
+            del_lon = st.number_input("Delivery Lon", value=80.2519, format="%.4f")
+
+        # UI Show (Not used in model)
+        food_type = st.selectbox("Type of Food", ["Buffet", "Drinks", "Meal", "Snack"])
+
+        st.write("---")
+        st.subheader("☁️ Environment")
+        e1, e2 = st.columns(2)
+        with e1: traffic = st.selectbox("Traffic Density", ["Low", "Medium", "High", "Jam"])
+        with e2: weather = st.selectbox("Weather", ["Sunny", "Stormy", "Sandstorms", "Cloudy", "Fog", "Windy"])
+        city = st.selectbox("City Zone", ["Urban", "Semi-Urban", "Metropolitian"])
+
+with col_right:
+    with st.container():
+        st.subheader("🛵 Personnel & Timing")
+        age = st.number_input("Courier Age", 18, 60, 25)
+        rating = st.slider("Rating Score", 1.0, 5.0, 4.8)
+        vehicle_condition = st.select_slider("Vehicle Condition", options=[0, 1, 2], value=1)
+
+        # UI Show (Not used in model)
+        vehicle_type = st.selectbox("Type of Vehicle",
+                                    ["Bicycle", "Electric Scooter", "Scooter", "Motorcycle"])
+
+        st.write("---")
+        st.write("**⏰ Order Timestamp**")
+        t1, t2 = st.columns(2)
+        with t1: order_hour = st.number_input("Hour (0-23)", 0, 23, datetime.now().hour)
+        with t2: order_min = st.number_input("Minute (0-59)", 0, 59, datetime.now().minute)
+
+        festival = st.toggle("Festival Impact Mode")
+
+# --------------------------------------------------
+# PREDICTION LOGIC
+# --------------------------------------------------
+st.write("")
+if st.button("Generate Intelligence Report"):
+    with st.spinner("Processing Logistics Data..."):
+        # Model ထဲကို food_type နဲ့ vehicle_type မထည့်ထားပါဘူး
+        data = {
+            "Delivery_person_Age": age,
+            "Delivery_person_Ratings": rating,
+            "Restaurant_latitude": res_lat,
+            "Restaurant_longitude": res_lon,
+            "Delivery_location_latitude": del_lat,
+            "Delivery_location_longitude": del_lon,
+            "Vehicle_condition": vehicle_condition,
+            "multiple_deliveries": 1,
+            "Order_Hour": order_hour,
+            "Road_traffic_density": traffic,
+            "Weatherconditions": weather,
+            "Festival": "Yes" if festival else "No",
+            "City": city
+        }
+
+        df = pd.DataFrame([data])
+        dist = calculate_distance(res_lat, res_lon, del_lat, del_lon)
+        df["distance_km"] = dist
+
+        # Reindexing with feature_list (model train တုန်းက အစီအစဉ်အတိုင်းဖြစ်အောင်)
+        df_final = pd.get_dummies(df).reindex(columns=feature_list, fill_value=0)
+
+        selected_model = models[selected_model_name]
+        prediction = selected_model.predict(df_final)[0]
+
+        # Results Display
+        st.divider()
+        res_c1, res_c2, res_c3 = st.columns(3)
+        res_c1.metric("ESTIMATED ARRIVAL", f"{int(prediction)} MIN")
+        res_c2.metric("TOTAL DISTANCE", f"{dist:.2f} KM")
+        res_c3.metric("SELECTED ENGINE", selected_model_name)
+
+        # Visual Only Information display
+        st.info(f"Summary: Delivering {food_type} via {vehicle_type}")
+        # st.balloons()
