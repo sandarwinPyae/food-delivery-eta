@@ -180,18 +180,31 @@ with tab_viz:
     try:
         top_10 = pd.read_csv("data/top_10_restaurant_hubs.csv")
         fig_hub, ax_hub = plt.subplots(figsize=(10, 6))
-        ax_hub.hlines(y=top_10['City_Name'], xmin=0, xmax=top_10['Restaurant_Count'], color='#D3D3D3', alpha=0.6,
-                      linewidth=1.5)
-        ax_hub.scatter(top_10['Restaurant_Count'], top_10['City_Name'], color='#E74C3C', s=100, zorder=3)
 
+        # Create the Lollipop Chart
+        ax_hub.hlines(y=top_10['City_Name'], xmin=0, xmax=top_10['Restaurant_Count'],
+                      color='#D3D3D3', alpha=0.6, linewidth=1.5)
+        ax_hub.scatter(top_10['Restaurant_Count'], top_10['City_Name'],
+                       color='#E74C3C', s=100, zorder=3)
+
+        # Adding the labels you requested
+        ax_hub.set_xlabel("Number of Restaurants", fontsize=10, fontweight='bold', labelpad=10)
+        ax_hub.set_ylabel("City Name", fontsize=10, fontweight='bold', labelpad=10)
+
+        # Add text annotations for each point
         for _, row in top_10.iterrows():
-            ax_hub.text(row['Restaurant_Count'] + 0.3, row['City_Name'], f"{int(row['Restaurant_Count'])}", va='center',
+            ax_hub.text(row['Restaurant_Count'] + 0.3, row['City_Name'],
+                        f"{int(row['Restaurant_Count'])}", va='center',
                         fontsize=9, fontweight='bold')
 
         sns.despine(top=True, right=True, left=True)
+
+        # Adjust layout to make sure labels aren't cut off
+        plt.tight_layout()
+
         st.pyplot(fig_hub)
-    except:
-        st.warning("Hub data file not found.")
+    except Exception as e:
+        st.warning(f"Hub data file not found or error occurred: {e}")
 # ==============================
 # 🔢 STATISTICS TAB
 # ==============================
